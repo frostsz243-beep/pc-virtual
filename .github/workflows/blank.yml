@@ -65,4 +65,17 @@ jobs:
           Write-Host "================================"
           Write-Host "WINDOWS PC VIRTUAL"
           Write-Host "================================"
-          Write-Host "IP
+          Write-Host "IP: $ip"
+          Write-Host "Usuario: pcuser"
+          Write-Host "Porta: 3389"
+          Write-Host "================================"
+
+      - name: Manter PC ligado
+        shell: powershell
+        run: |
+          Write-Host "PC virtual iniciado."
+
+          while ($true) {
+            Write-Host "PC ativo: $(Get-Date)"
+            Start-Sleep -Seconds 300
+          }
