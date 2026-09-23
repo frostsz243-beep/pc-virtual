@@ -1,0 +1,100 @@
+name: Windows PC Virtual
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  windows-pc:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configurar RDP
+        shell: powershell
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          $password = ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force
+
+          if (-not (Get-LocalUser -Name "pcuser" -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name "pcuser" -Password $password -FullName "PC Virtual"
+          } else {
+            Set-LocalUser -Name "pcuser" -Password $password
+          }
+
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "pcuser" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators" -Member "pcuser" -ErrorAction SilentlyContinue
+
+          Set-ItemProperty `
+            -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" `
+            -Name "fDenyTSConnections" `
+            -Value 0
+
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+          Set-Service -Name "TermService" -StartupType Automatic
+          Start-Service -Name "TermService"
+
+      - name: Instalar Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:github
+
+      - name: Mostrar informações do PC
+        shell: powershell
+        run: |
+          Start-Sleep -Seconds 5
+
+          $ip = tailscale ip -4
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "       WINDOWS PC VIRTUAL"
+          Write-Host "========================================"
+          Write-Host ""
+          Write-Host "IP Tailscale:"
+          Write-Host $ip
+          Write-Host ""
+          Write-Host "Usuário: pcuser"
+          Write-Host "Porta: 3389"
+          Write-Host ""
+          Write-Host "========================================"
+
+      - name: Build automático
+        shell: powershell
+        run: |
+          if (Test-Path ".\package.json") {
+            Write-Host "Projeto Node.js encontrado."
+            npm install
+            npm run build
+          }
+          elseif (Get-ChildItem -Filter "*.sln" -ErrorAction SilentlyContinue) {
+            Write-Host "Projeto .NET encontrado."
+            dotnet restore
+            dotnet build --configuration Release
+          }
+          elseif (Get-ChildItem -Filter "*.csproj" -ErrorAction SilentlyContinue) {
+            Write-Host "Projeto C# encontrado."
+            dotnet restore
+            dotnet build --configuration Release
+          }
+          elseif (Test-Path ".\Cargo.toml") {
+            Write-Host "Projeto Rust encontrado."
+            cargo build --release
+          }
+          else {
+            Write-Host "Nenhum projeto para build encontrado."
+          }
+
+      - name: Manter PC ligado
+        shell: powershell
+       
